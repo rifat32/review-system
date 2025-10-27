@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Utils\ErrorUtil;
 use App\Models\Order;
 use App\Models\Restaurant;
-use App\Models\Review;
 use App\Models\ReviewNew;
 use App\Models\User;
 use Exception;
@@ -257,8 +256,8 @@ class CustomerController extends Controller
         $query->where('orders.restaurant_id', $restaurant->id)
             ->whereRaw('(SELECT COUNT(*) FROM orders o WHERE o.customer_id = orders.customer_id AND o.restaurant_id = ?) > 1', [$restaurant->id]);
     }
-
 ])
+
 ->withSum(['orders as total_revenue_takeaway' => function ($query) use ($restaurant) {
     $query->where('orders.restaurant_id', $restaurant->id)
         ->where('orders.type', 'take_away');
@@ -408,13 +407,7 @@ class CustomerController extends Controller
                 throw new Exception("No data found", 404);
             }
 
-            if ($request->filled("id")) {
-                $users =  $this->addCustomerData($users,$restaurant);
-            } else {
-                foreach ($users as $user) {
-                    $user = $this->addCustomerData($user,$restaurant);
-                }
-            }
+          
 
 
 
@@ -428,101 +421,5 @@ class CustomerController extends Controller
     }
 
 
-    public function addCustomerData($user,$restaurant)
-    {
-
-
-        $completed_orders = Order::
-        with(
-
-            'restaurant',
-
-            "detail.dish",
-
-            "detail.meal",
-
-            "detail.meal_variations.dish.deal.dish",
-
-            "detail.meal_variations.dish_variation.variation.variation_type",
-
-            "detail.variations.variation.variation_type",
-
-            "ordervariation.variation",
-
-            "user"
-        )
-
-        ->where('orders.customer_id', $user->id)
-        ->where('orders.status', 'completed')
-        ->orderByDesc('id')
-        ->get();
-
-
-       $user->completed_orders =  $completed_orders;
-
-    // Fetch peak order times separately
-    $peak_order_time = Order::where('orders.customer_id', $user->id)
-        ->where('orders.restaurant_id', $restaurant->id)
-        ->selectRaw('HOUR(orders.created_at) as order_hour, COUNT(*) as order_count')
-        ->groupBy('order_hour')
-        ->orderByDesc('order_count')
-        ->limit(1)
-        ->first();
-    $user->peak_order_times = $peak_order_time ? $peak_order_time->order_hour : null;
-
-    // Fetch preferred dishes separately
-    $preferred_dishes = Order::where('orders.customer_id', $user->id)
-        ->where('orders.restaurant_id', $restaurant->id)
-        ->join('order_details', 'orders.id', '=', 'order_details.order_id')
-        ->join('dishes', 'order_details.dish_id', '=', 'dishes.id')
-        ->selectRaw('dishes.name, COUNT(order_details.dish_id) as dish_count')
-        ->groupBy('dishes.name')
-        ->orderByDesc('dish_count')
-        ->limit(3)
-        ->pluck('dishes.name');
-
-
-    $user->preferred_dishes = $preferred_dishes;
-
-    // Fetch positive reviews separately
-    $positive_reviews = ReviewNew::where('review_news.restaurant_id', $restaurant->id)
-        ->where('review_news.rate', '>=', 4)
-        ->where('review_news.user_id', $user->id)
-        ->count();
-    $user->positive_reviews = $positive_reviews;
-
-    // Fetch negative reviews separately
-    $negative_reviews = ReviewNew::where('review_news.restaurant_id', $restaurant->id)
-        ->where('review_news.rate', '<=', 2)
-        ->where('review_news.user_id', $user->id)
-        ->count();
-    $user->negative_reviews = $negative_reviews;
-
-    // Fetch common complaints separately
-    $common_complaints = ReviewNew::selectRaw('COUNT(id) as complaint_count, SUBSTRING_INDEX(comment, " ", 3) as complaint_snippet')
-        ->where('review_news.restaurant_id', $restaurant->id)
-        ->where('review_news.user_id', $user->id)
-        ->groupBy('complaint_snippet')
-        ->havingRaw('complaint_count > 2')
-        ->get();
-    $user->common_complaints = $common_complaints;
-
-    // Fetch satisfaction scores separately
-    $satisfaction_scores = ReviewNew::where('review_news.restaurant_id', $restaurant->id)
-        ->where('review_news.user_id', $user->id)
-        ->avg('review_news.rate');
-    $user->avg_satisfaction = $satisfaction_scores;
-
-    // Fetch customer comments trends separately
-    $customer_comments_trends = ReviewNew::selectRaw('comment, COUNT(*) as comment_count')
-        ->where('review_news.restaurant_id', $restaurant->id)
-        ->where('review_news.user_id', $user->id)
-        ->groupBy('comment')
-        ->orderByDesc('comment_count')
-        ->limit(5)
-        ->get();
-    $user->customer_comments_trends = $customer_comments_trends;
-
-        return $user;
-    }
+   
 }
